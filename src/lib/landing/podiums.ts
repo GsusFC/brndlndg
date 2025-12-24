@@ -40,14 +40,17 @@ const getIndexerDbUrl = (): string => {
   return url
 }
 
-const shouldUseSsl = (connectionString: string): boolean => {
+const getPgSslConfig = (connectionString: string): { rejectUnauthorized: false } | undefined => {
   try {
     const parsed = new URL(connectionString)
-    const sslmode = parsed.searchParams.get('sslmode')
-    return sslmode === 'require'
+    const host = parsed.hostname
+    if (host === 'localhost' || host === '127.0.0.1') return undefined
   } catch {
-    return false
+    // If we can't parse it, err on the side of supporting Railway/proxy TLS.
+    return { rejectUnauthorized: false }
   }
+
+  return { rejectUnauthorized: false }
 }
 
 const getSchemaName = (connectionString: string): string => {
@@ -77,7 +80,7 @@ const getPool = (): Pool => {
 
   const pool = new Pool({
     connectionString,
-    ssl: shouldUseSsl(connectionString) ? { rejectUnauthorized: false } : undefined,
+    ssl: getPgSslConfig(connectionString),
     max: 2,
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 5_000,
