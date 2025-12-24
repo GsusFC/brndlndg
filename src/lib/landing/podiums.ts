@@ -40,17 +40,42 @@ const getIndexerDbUrl = (): string => {
   return url
 }
 
-const getPgSslConfig = (connectionString: string): { rejectUnauthorized: false } | undefined => {
+type PgConnectionConfig = {
+  host: string
+  port: number
+  user: string
+  password: string
+  database: string
+  ssl: { rejectUnauthorized: false } | undefined
+}
+
+const parsePgConnectionString = (connectionString: string): PgConnectionConfig => {
+  let parsed: URL
   try {
-    const parsed = new URL(connectionString)
-    const host = parsed.hostname
-    if (host === 'localhost' || host === '127.0.0.1') return undefined
+    parsed = new URL(connectionString)
   } catch {
-    // If we can't parse it, err on the side of supporting Railway/proxy TLS.
-    return { rejectUnauthorized: false }
+    throw new Error('INDEXER_DATABASE_URL must be a valid URL')
   }
 
-  return { rejectUnauthorized: false }
+  const host = parsed.hostname
+  assert(host.length > 0, 'INDEXER_DATABASE_URL: hostname is required')
+
+  const port = parsed.port ? Number(parsed.port) : 5432
+  assert(Number.isInteger(port) && port > 0, 'INDEXER_DATABASE_URL: port must be a positive integer')
+
+  const database = parsed.pathname.replace(/^\//, '')
+  assert(database.length > 0, 'INDEXER_DATABASE_URL: database is required')
+
+  const user = parsed.username
+  assert(user.length > 0, 'INDEXER_DATABASE_URL: username is required')
+
+  const password = parsed.password
+  assert(password.length > 0, 'INDEXER_DATABASE_URL: password is required')
+
+  const ssl =
+    host === 'localhost' || host === '127.0.0.1' ? undefined : ({ rejectUnauthorized: false } as const)
+
+  return { host, port, user, password, database, ssl }
 }
 
 const getSchemaName = (connectionString: string): string => {
@@ -74,13 +99,18 @@ const globalForPg = globalThis as unknown as { __brndLandingPgPool?: Pool }
 
 const getPool = (): Pool => {
   const connectionString = getIndexerDbUrl()
+  const { host, port, user, password, database, ssl } = parsePgConnectionString(connectionString)
 
   const existing = globalForPg.__brndLandingPgPool
   if (existing) return existing
 
   const pool = new Pool({
-    connectionString,
-    ssl: getPgSslConfig(connectionString),
+    host,
+    port,
+    user,
+    password,
+    database,
+    ssl,
     max: 2,
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 5_000,
