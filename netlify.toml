@@ -11,11 +11,5 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-[[redirects]]
-  from = "/api/landing/podiums"
-  to = "/.netlify/functions/landing-podiums"
-  status = 200
-  force = true
-
 # If deploy artifacts grow too large/time out, consider:
 # command = "npm run build && rm -rf .next/cache"
