@@ -95,14 +95,26 @@ const quoteIdent = (identifier: string): string => {
   return `"${identifier}"`
 }
 
-const globalForPg = globalThis as unknown as { __brndLandingPgPool?: Pool }
+const globalForPg = globalThis as unknown as {
+  __brndLandingPgPool?: Pool
+  __brndLandingPgPoolKey?: string
+}
 
 const getPool = (): Pool => {
   const connectionString = getIndexerDbUrl()
   const { host, port, user, password, database, ssl } = parsePgConnectionString(connectionString)
 
+  const key = `v2:${host}:${port}:${database}:ssl=${ssl ? 1 : 0}`
+
   const existing = globalForPg.__brndLandingPgPool
-  if (existing) return existing
+  const existingKey = globalForPg.__brndLandingPgPoolKey
+  if (existing && existingKey === key) return existing
+
+  if (existing) {
+    existing.end().catch(() => {
+      // ignore
+    })
+  }
 
   const pool = new Pool({
     host,
@@ -117,6 +129,7 @@ const getPool = (): Pool => {
   })
 
   globalForPg.__brndLandingPgPool = pool
+  globalForPg.__brndLandingPgPoolKey = key
   return pool
 }
 
