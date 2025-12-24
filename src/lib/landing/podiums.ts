@@ -182,37 +182,40 @@ export async function getRecentPodiums(limit = 10): Promise<Podium[]> {
   const fids = rows.map((row) => row.fid)
   const usersByFid = await fetchUsersFromNeynar(fids)
 
-  return rows.map((row) => {
+  const out: Podium[] = []
+
+  for (const row of rows) {
     assert(typeof row.id === 'string' && row.id.length > 0, 'votes.id must be a string')
     assert(Number.isInteger(row.fid) && row.fid > 0, 'votes.fid must be a positive int')
-    assert(typeof row.brand_ids === 'string' && row.brand_ids.length > 0, 'votes.brand_ids must be a JSON string')
 
     let brandIds: number[] = []
-    try {
-      const parsed = JSON.parse(row.brand_ids) as unknown
-      assert(Array.isArray(parsed), 'votes.brand_ids must be a JSON array')
-      brandIds = parsed.map((v) => Number(v)).filter((n) => Number.isInteger(n) && n > 0)
-      assert(brandIds.length >= 3, 'votes.brand_ids must contain at least 3 brand IDs')
-    } catch {
-      throw new Error(`Failed to parse votes.brand_ids for vote ${row.id}`)
+    if (typeof row.brand_ids === 'string' && row.brand_ids.length > 0) {
+      try {
+        const parsed = JSON.parse(row.brand_ids) as unknown
+        if (Array.isArray(parsed)) {
+          brandIds = parsed.map((v) => Number(v)).filter((n) => Number.isInteger(n) && n > 0)
+        }
+      } catch {
+        brandIds = []
+      }
     }
 
     const ts = typeof row.timestamp === 'number' ? row.timestamp : Number(row.timestamp)
-    assert(Number.isFinite(ts) && ts > 0, 'votes.timestamp must be a positive number')
+    if (!Number.isFinite(ts) || ts <= 0) continue
 
     const user = usersByFid.get(row.fid)
-    assert(user, `Missing user metadata for fid ${row.fid}`)
-
     const [b1, b2, b3] = brandIds
 
-    return {
+    out.push({
       id: row.id,
       date: new Date(ts * 1000).toISOString(),
-      username: user.username,
-      userPhoto: user.userPhoto,
-      brand1: resolveBrand(b1),
-      brand2: resolveBrand(b2),
-      brand3: resolveBrand(b3),
-    }
-  })
+      username: user?.username ?? `FID ${row.fid}`,
+      userPhoto: user?.userPhoto ?? null,
+      brand1: Number.isInteger(b1) ? resolveBrand(b1) : null,
+      brand2: Number.isInteger(b2) ? resolveBrand(b2) : null,
+      brand3: Number.isInteger(b3) ? resolveBrand(b3) : null,
+    })
+  }
+
+  return out
 }
